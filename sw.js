@@ -1,5 +1,5 @@
 // Service worker: rende l'app disponibile offline.
-const CACHE = 'stipendio-v1';
+const CACHE = 'stipendio-v2';
 const FILE = ['./', 'index.html', 'css/stile.css', 'js/motore.js', 'js/app.js', 'manifest.webmanifest', 'icona.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

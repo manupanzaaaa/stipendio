@@ -108,7 +108,7 @@
     },
     trasferte: {
       diaria: 30, base: 15.49, media: 30.99, piena: 46.48,
-      sogliaFuori: 2, sogliaTotale: 3,
+      sogliaFuori: 2, sogliaTotale: 3, sogliaPiattaforma: 2,
       maxColazione: 5, maxPranzo: 30, maxCena: 40,
     },
     buoniPasto: { valore: 8, ancheInTrasferta: false },
@@ -167,6 +167,7 @@
   const TIPI = {
     ufficio: { nome: 'Ufficio', ruolo: 'reset', lavoro: true },
     trasferta: { nome: 'Trasferta', ruolo: 'trasferta', lavoro: true },
+    piattaforma: { nome: 'Piattaforma', ruolo: 'trasferta', lavoro: true },
     formazione: { nome: 'Formazione in regione', ruolo: 'reset', lavoro: false },
     ferie: { nome: 'Ferie', ruolo: 'collega', lavoro: false },
     permesso: { nome: 'Permesso', ruolo: 'collega', lavoro: false },
@@ -174,6 +175,8 @@
     festivita: { nome: 'Festività', ruolo: 'collega', lavoro: false },
     riposo: { nome: 'Riposo', ruolo: 'collega', lavoro: false },
   };
+
+  const inTrasferta = (tipo) => !!(tipo && TIPI[tipo] && TIPI[tipo].ruolo === 'trasferta');
 
   // Tipo effettivo di un giorno (registrato o dedotto dal calendario).
   function tipoGiorno(data, giorni, imp) {
@@ -194,16 +197,18 @@
     let catena = null, id = 0;
     const chiudi = (aperta) => {
       if (!catena) return;
-      const continuativa = catena.fuori >= t.sogliaFuori || catena.giorni.length >= t.sogliaTotale;
+      const continuativa = catena.fuori >= t.sogliaFuori || catena.giorni.length >= t.sogliaTotale
+        || (catena.piattaforma > 0 && catena.giorni.length >= (t.sogliaPiattaforma || 2));
       for (const d of catena.giorni) {
-        const s = (giorni[d] && giorni[d].spese) || {};
+        const rec = giorni[d] || {};
+        const s = rec.spese || {};
         let codice = 'base';
         if (continuativa) {
-          if ((s.cena && s.cena.r) || (s.hotel && s.hotel.r)) codice = 'base';
+          if ((s.cena && s.cena.r) || (s.hotel && s.hotel.r) || rec.pernotto === 'hotel') codice = 'base';
           else if (s.pranzo && s.pranzo.r) codice = 'media';
           else codice = 'piena';
         }
-        risultato[d] = { catena: catena.id, continuativa, codice, giorniCatena: catena.giorni.length, fuori: catena.fuori, aperta };
+        risultato[d] = { catena: catena.id, continuativa, codice, giorniCatena: catena.giorni.length, fuori: catena.fuori, piattaforma: catena.piattaforma, aperta };
       }
       catena = null;
     };
@@ -211,9 +216,10 @@
       const tipo = tipoGiorno(d, giorni, imp);
       const ruolo = tipo ? TIPI[tipo].ruolo : 'collega';
       if (ruolo === 'trasferta') {
-        if (!catena) catena = { id: ++id, giorni: [], fuori: 0 };
+        if (!catena) catena = { id: ++id, giorni: [], fuori: 0, piattaforma: 0 };
         catena.giorni.push(d);
-        if ((giorni[d].regione || 'in') === 'fuori') catena.fuori++;
+        if (tipo === 'piattaforma') catena.piattaforma++;
+        else if ((giorni[d].regione || 'in') === 'fuori') catena.fuori++;
       } else if (ruolo === 'reset') {
         chiudi(false);
       }
@@ -278,7 +284,7 @@
     // 2. Giorni del mese.
     let buoni = 0, vuoti = 0, catenaAperta = false;
     let spesaTotale = 0, esubero = 0;
-    const conteggio = { ufficio: 0, trasferta: 0, ferie: 0, permessoOre: 0, malattia: 0, festivita: 0, formazione: 0 };
+    const conteggio = { ufficio: 0, trasferta: 0, piattaforma: 0, ferie: 0, permessoOre: 0, malattia: 0, festivita: 0, formazione: 0 };
     for (let d = 1; d <= gm; d++) {
       const data = iso(y, m, d);
       const rec = giorni[data] || {};
@@ -293,7 +299,7 @@
       if (rec.permessoOre && tipo !== 'permesso') conteggio.permessoOre += Number(rec.permessoOre);
 
       if (TIPI[tipo].lavoro) {
-        const minuti = Number(rec.minuti != null ? rec.minuti : (tipo === 'trasferta' ? imp.orari.turnoTrasferta : imp.orari.turnoUfficio) * 60);
+        const minuti = Number(rec.minuti != null ? rec.minuti : (inTrasferta(tipo) ? imp.orari.turnoTrasferta : imp.orari.turnoUfficio) * 60);
         const giornoNonLavorativo = gs === 0 || gs === 6 || !!fest;
         if (giornoNonLavorativo) {
           const ore = Math.floor(minuti / imp.orari.bloccoMinuti) * imp.orari.bloccoMinuti / 60;
@@ -303,7 +309,7 @@
           const c10 = festivo ? imp.maggiorazioni.agevolato15Festivo : imp.maggiorazioni.agevolato15Sabato;
           aggiungi(`magg-${festivo ? 'f' : 's'}-${tariffa}`, { id: festivo ? 'festivo' : 'sabato', descr: festivo ? `Lavoro festivo ${perc}%` : `Lavoro sabato ${perc}%`, unita: 'ORE', soggetta: true, c10 }, ore, tariffa, ore * tariffa);
         } else {
-          const turno = tipo === 'trasferta' ? imp.orari.turnoTrasferta : imp.orari.turnoUfficio;
+          const turno = inTrasferta(tipo) ? imp.orari.turnoTrasferta : imp.orari.turnoUfficio;
           const ore = oreStraordinario(minuti, turno, imp.orari.bloccoMinuti);
           if (ore > 0) {
             const o1 = Math.min(2, ore), o2 = ore - o1;
@@ -318,7 +324,7 @@
 
       if (tipo === 'ufficio' || (tipo === 'trasferta' && imp.buoniPasto.ancheInTrasferta)) buoni++;
 
-      if (tipo === 'trasferta') {
+      if (inTrasferta(tipo)) {
         const c = trasf[data];
         if (c && c.aperta && !c.continuativa) catenaAperta = true;
         aggiungi('diaria', { id: 'diaria', descr: 'Diaria Italia soggetta', unita: 'GG', soggetta: true }, 1, imp.trasferte.diaria, imp.trasferte.diaria);
@@ -508,7 +514,7 @@
     r2, iso, pad, giorniNelMese, giornoSettimana, aggiungiGiorni, chiaveMese, unisciProfondo, clona,
     REGOLE_FISCALI, regoleAnno, impostaScaglioni, detrazioneLavoroDipendente, ulterioreDetrazione,
     IMPOSTAZIONI_DEFAULT, normalizzaImpostazioni, periodoValido, pagaMensile, pagaOraria,
-    festivita, pasqua, TIPI, tipoGiorno, classificaTrasferte, oreStraordinario,
+    festivita, pasqua, TIPI, inTrasferta, tipoGiorno, classificaTrasferte, oreStraordinario,
     vociMese, calcolaMese, fmtNum,
   };
 });

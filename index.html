@@ -91,7 +91,17 @@
       <div class="dialogo-corpo">
         <fieldset class="tipi" id="sceltaTipo"></fieldset>
 
-        <div data-mostra="trasferta">
+        <div data-mostra="piattaforma">
+          <p class="aiuto">Dove dormi stanotte?</p>
+          <div class="segmentato">
+            <label><input type="radio" name="pernotto" value="piattaforma" checked> Piattaforma</label>
+            <label><input type="radio" name="pernotto" value="hotel"> Hotel a terra</label>
+            <label><input type="radio" name="pernotto" value="casa"> A casa</label>
+          </div>
+          <p class="aiuto">Con almeno un giorno in piattaforma la trasferta è continuativa da 2 giorni. Notte in hotel → Base; notte in piattaforma o rientro → Piena (Media se rimborsi il pranzo).</p>
+        </div>
+
+        <div data-mostra="regione">
           <div class="segmentato" id="sceltaRegione">
             <label><input type="radio" name="regione" value="in" checked> In regione</label>
             <label><input type="radio" name="regione" value="fuori"> Fuori regione</label>

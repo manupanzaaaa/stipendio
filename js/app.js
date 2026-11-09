@@ -5,9 +5,11 @@
   const CHIAVE = 'calcoloStipendio.dati.v1';
   const MESI = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
   const GIORNI_BREVI = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
-  const COLORI = { ufficio: '--t-ufficio', trasferta: '--t-trasferta', formazione: '--t-formazione', ferie: '--t-ferie', permesso: '--t-permesso', malattia: '--t-malattia', festivita: '--t-festivita', riposo: '--t-riposo' };
-  const ETICHETTE_BREVI = { ufficio: 'Ufficio', trasferta: 'Trasf.', formazione: 'Formaz.', ferie: 'Ferie', permesso: 'Permesso', malattia: 'Malattia', festivita: 'Festa', riposo: '' };
+  const COLORI = { ufficio: '--t-ufficio', trasferta: '--t-trasferta', piattaforma: '--t-piattaforma', formazione: '--t-formazione', ferie: '--t-ferie', permesso: '--t-permesso', malattia: '--t-malattia', festivita: '--t-festivita', riposo: '--t-riposo' };
+  const ETICHETTE_BREVI = { ufficio: 'Ufficio', trasferta: 'Trasf.', piattaforma: 'Piattaf.', formazione: 'Formaz.', ferie: 'Ferie', permesso: 'Permesso', malattia: 'Malattia', festivita: 'Festa', riposo: '' };
   const SIGLE = { base: 'B', media: 'M', piena: 'P' };
+  const isT = (t) => M.inTrasferta(t);
+  const NOTTI = { piattaforma: 'notte in piattaforma', hotel: 'notte in hotel', casa: 'rientro a casa' };
 
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -134,16 +136,17 @@
       let breve = etichetta;
       if (tipo === 'trasferta') { etichetta += rec.regione === 'fuori' ? ' fuori' : ' in reg.'; breve = rec.regione === 'fuori' ? 'Fuori' : 'In reg.'; }
       if (tipo === 'festivita' && !rec) { etichetta = fest || 'Festa'; breve = 'Festa'; }
+      if (tipo === 'piattaforma') { etichetta = 'Piattaforma'; breve = 'Piatt.'; }
       if (tipo === 'malattia') breve = 'Malatt.';
       if (tipo === 'permesso') breve = 'Perm.';
       let badge = '', extra = '', catena = '';
-      if (tipo === 'trasferta' && r.trasferte[data]) {
+      if (isT(tipo) && r.trasferte[data]) {
         const c = r.trasferte[data];
         badge = `<span class="badge ${c.codice}" title="${c.continuativa ? 'Continuativa' : 'Non continuativa'}">${SIGLE[c.codice]}</span>`;
         catena = '<span class="catena"></span>';
       }
-      if (rec && (tipo === 'ufficio' || tipo === 'trasferta')) {
-        const turno = tipo === 'trasferta' ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
+      if (rec && (tipo === 'ufficio' || isT(tipo))) {
+        const turno = isT(tipo) ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
         const min = rec.minuti != null ? rec.minuti : turno * 60;
         const lavorativo = !(gs === 0 || gs === 6 || fest);
         const str = lavorativo ? M.oreStraordinario(min, turno, i.orari.bloccoMinuti) : min / 60;
@@ -151,6 +154,7 @@
         if (str > 0) parti.push(lavorativo ? `+${num(str)} str.` : 'magg.');
         const s = rec.spese || {};
         if (['colazione', 'pranzo', 'cena', 'hotel'].some((k) => s[k] && s[k].r)) parti.push('€');
+        if (tipo === 'piattaforma' && rec.pernotto && rec.pernotto !== 'casa') parti.push(rec.pernotto === 'hotel' ? '🏨' : '🌙');
         extra = `<span class="extra">${parti.join(' · ')}</span>`;
       }
       if (rec && rec.permessoOre && tipo !== 'permesso') extra += `<span class="extra">perm. ${num(rec.permessoOre)}h</span>`;
@@ -166,7 +170,7 @@
   }
 
   /* ---------------- Dialogo del giorno ---------------- */
-  const TIPI_DIALOGO = ['ufficio', 'trasferta', 'formazione', 'ferie', 'permesso', 'malattia', 'festivita', 'riposo'];
+  const TIPI_DIALOGO = ['ufficio', 'trasferta', 'piattaforma', 'formazione', 'ferie', 'permesso', 'malattia', 'festivita', 'riposo'];
   function apriGiorno(data) {
     giornoAperto = data;
     const i = imp();
@@ -179,7 +183,8 @@
     $('#sceltaTipo').innerHTML = '<legend class="aiuto">Tipo di giornata</legend>' + TIPI_DIALOGO.map((t) =>
       `<label style="--c:var(${COLORI[t]})"><input type="radio" name="tipo" value="${t}" ${t === tipoAtt ? 'checked' : ''}>${M.TIPI[t].nome}</label>`).join('');
     document.querySelector(`input[name="regione"][value="${rec.regione === 'fuori' ? 'fuori' : 'in'}"]`).checked = true;
-    const turno = tipoAtt === 'trasferta' ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
+    document.querySelector(`input[name="pernotto"][value="${rec.pernotto || 'piattaforma'}"]`).checked = true;
+    const turno = isT(tipoAtt) ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
     const min = rec.minuti != null ? rec.minuti : turno * 60;
     $('#ore').value = Math.floor(min / 60);
     $('#minuti').value = String(min % 60);
@@ -204,27 +209,29 @@
   function aggiornaDialogo() {
     const i = imp();
     const tipo = tipoScelto();
-    const lavoro = tipo === 'ufficio' || tipo === 'trasferta';
-    document.querySelectorAll('[data-mostra="trasferta"]').forEach((e) => { e.hidden = tipo !== 'trasferta'; });
+    const lavoro = tipo === 'ufficio' || isT(tipo);
+    document.querySelectorAll('[data-mostra="trasferta"]').forEach((e) => { e.hidden = !isT(tipo); });
+    document.querySelectorAll('[data-mostra="regione"]').forEach((e) => { e.hidden = tipo !== 'trasferta'; });
+    document.querySelectorAll('[data-mostra="piattaforma"]').forEach((e) => { e.hidden = tipo !== 'piattaforma'; });
     document.querySelectorAll('[data-mostra="lavoro"]').forEach((e) => { e.hidden = !lavoro; });
     document.querySelectorAll('[data-mostra="permessi"]').forEach((e) => { e.hidden = !(tipo === 'ufficio' || tipo === 'permesso'); });
     if (lavoro && !$('#ore').dataset.toccato) {
-      $('#ore').value = tipo === 'trasferta' ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
+      $('#ore').value = isT(tipo) ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
       $('#minuti').value = '0';
     }
     const data = giornoAperto;
     const gs = M.giornoSettimana(data);
     const nonLav = gs === 0 || gs === 6 || M.festivita(data, i);
-    const turno = tipo === 'trasferta' ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
+    const turno = isT(tipo) ? i.orari.turnoTrasferta : i.orari.turnoUfficio;
     const blocco = i.orari.bloccoMinuti;
     $('#aiutoOre').textContent = nonLav
       ? `Giorno non lavorativo: tutte le ore sono pagate con la maggiorazione ${gs === 6 && !M.festivita(data, i) ? 'del sabato (' + i.maggiorazioni.sabato : 'festiva (' + i.maggiorazioni.festivo}%).`
-      : `Turno ${tipo === 'trasferta' ? 'trasferta' : 'ufficio'} ${turno} h: straordinario da ${turno} h ${blocco} min, a blocchi di ${blocco} minuti.`;
+      : `Turno ${isT(tipo) ? 'trasferta' : 'ufficio'} ${turno} h: straordinario da ${turno} h ${blocco} min, a blocchi di ${blocco} minuti.`;
     const t = i.trasferte;
     $('#aiutoSpese').textContent = `Massimali: colazione ${num(t.maxColazione)} €, pranzo ${num(t.maxPranzo)} €, cena ${num(t.maxCena)} € (l'esubero di pranzo e cena viene trattenuto). In trasferta continuativa: cena o hotel → Base, solo pranzo → Media, nessun rimborso → Piena.`;
     const c = M.classificaTrasferte(dati.giorni, i, data, data)[data];
-    $('#infoTrasferta').textContent = tipo === 'trasferta' && c
-      ? `Trasferta attuale (dati salvati): ${c.giorniCatena} giorni, di cui ${c.fuori} fuori regione → ${c.continuativa ? 'continuativa' : 'non continuativa'}, indennità ${c.codice === 'base' ? 'Base' : c.codice === 'media' ? 'Media' : 'Piena'}.`
+    $('#infoTrasferta').textContent = isT(tipo) && c
+      ? `Trasferta attuale (dati salvati): ${c.giorniCatena} giorni, di cui ${c.fuori} fuori regione${c.piattaforma ? ` e ${c.piattaforma} in piattaforma` : ''} → ${c.continuativa ? 'continuativa' : 'non continuativa'}, indennità ${c.codice === 'base' ? 'Base' : c.codice === 'media' ? 'Media' : 'Piena'}.`
       : '';
   }
 
@@ -232,11 +239,12 @@
     const tipo = tipoScelto();
     const rec = { tipo };
     if (tipo === 'trasferta') rec.regione = document.querySelector('input[name="regione"]:checked').value;
-    if (tipo === 'ufficio' || tipo === 'trasferta') {
+    if (tipo === 'piattaforma') rec.pernotto = document.querySelector('input[name="pernotto"]:checked').value;
+    if (tipo === 'ufficio' || isT(tipo)) {
       const min = Math.max(0, Math.min(24 * 60, Number($('#ore').value || 0) * 60 + Number($('#minuti').value || 0)));
       rec.minuti = min;
     }
-    if (tipo === 'trasferta') {
+    if (isT(tipo)) {
       const spese = {};
       for (const [k, id] of [['colazione', 'Colazione'], ['pranzo', 'Pranzo'], ['cena', 'Cena'], ['hotel', 'Hotel']]) {
         const importo = Number(String($(`#i${id}`).value).replace(',', '.')) || 0;
@@ -280,7 +288,7 @@
     };
     const d = r.dettaglio;
     const giorni = r.conteggio;
-    const nTrasf = Object.keys(r.trasferte).filter((k) => k.startsWith(M.chiaveMese(r.anno, r.mese)) && dati.giorni[k] && dati.giorni[k].tipo === 'trasferta').length;
+    const nTrasf = Object.keys(r.trasferte).filter((k) => k.startsWith(M.chiaveMese(r.anno, r.mese)) && dati.giorni[k] && isT(dati.giorni[k].tipo)).length;
     let html = '';
     if (!perStampa) html += r.avvisi.map((a) => `<div class="avviso">${esc(a)}</div>`).join('');
     html += `<div class="pannello-card scorrevole"><h3>Competenze</h3><table class="tabella">
@@ -306,7 +314,7 @@
       ${d.baseC10 ? `<tr><td>Imponibile maggiorazioni (15%)</td><td class="num">${eur(d.baseC10)}</td></tr>` : ''}
       ${r.conguaglio ? `<tr><td>Conguaglio: imponibile annuo / IRPEF dovuta / già pagata</td><td class="num">${eur(r.conguaglio.imponibileAnno)} / ${eur(r.conguaglio.dovuta)} / ${eur(r.conguaglio.pagata)}</td></tr>` : ''}
       </tbody></table>
-      <p class="aiuto">Giorni: ${giorni.ufficio} ufficio · ${nTrasf} trasferta · ${giorni.ferie} ferie · ${giorni.malattia} malattia · ${num(giorni.permessoOre)} h permesso · ${giorni.formazione} formazione</p></div>`;
+      <p class="aiuto">Giorni: ${giorni.ufficio} ufficio · ${nTrasf} trasferta (di cui ${giorni.piattaforma} in piattaforma) · ${giorni.ferie} ferie · ${giorni.malattia} malattia · ${num(giorni.permessoOre)} h permesso · ${giorni.formazione} formazione</p></div>`;
     return html;
   }
 
@@ -348,7 +356,7 @@
       const pref = M.chiaveMese(y, m);
       const haDati = Object.keys(dati.giorni).some((k) => k.startsWith(pref)) || (dati.mesi[pref] && (dati.mesi[pref].nettoReale != null || (dati.mesi[pref].voci || []).length));
       const r = calcola(y, m);
-      const trasf = Object.keys(dati.giorni).filter((k) => k.startsWith(pref) && dati.giorni[k].tipo === 'trasferta').length;
+      const trasf = Object.keys(dati.giorni).filter((k) => k.startsWith(pref) && isT(dati.giorni[k].tipo)).length;
       const reale = dati.mesi[pref] && dati.mesi[pref].nettoReale !== '' && dati.mesi[pref].nettoReale != null ? Number(dati.mesi[pref].nettoReale) : null;
       righe.push({ m, haDati, r, trasf, reale });
     }
@@ -405,9 +413,9 @@
       const c = r.trasferte[d];
       const s = g.spese || {};
       const sp = ['colazione', 'pranzo', 'cena', 'hotel'].filter((k) => s[k] && s[k].r).map((k) => `${k}${s[k].importo ? ' ' + num(s[k].importo) + ' €' : ''}`).join(', ');
-      return `<tr><td>${dataIt(d)}</td><td>${esc(M.TIPI[g.tipo] ? M.TIPI[g.tipo].nome : '')}${g.tipo === 'trasferta' ? (g.regione === 'fuori' ? ' fuori regione' : ' in regione') : ''}</td>
+      return `<tr><td>${dataIt(d)}</td><td>${esc(M.TIPI[g.tipo] ? M.TIPI[g.tipo].nome : '')}${g.tipo === 'trasferta' ? (g.regione === 'fuori' ? ' fuori regione' : ' in regione') : ''}${g.tipo === 'piattaforma' && g.pernotto ? ' (' + NOTTI[g.pernotto] + ')' : ''}</td>
         <td class="num">${g.minuti != null ? `${Math.floor(g.minuti / 60)}:${String(g.minuti % 60).padStart(2, '0')}` : ''}</td>
-        <td>${c && g.tipo === 'trasferta' ? ({ base: 'Base', media: 'Media', piena: 'Piena' })[c.codice] : ''}</td><td>${esc(sp)}</td><td>${esc(g.nota || '')}</td></tr>`;
+        <td>${c && isT(g.tipo) ? ({ base: 'Base', media: 'Media', piena: 'Piena' })[c.codice] : ''}</td><td>${esc(sp)}</td><td>${esc(g.nota || '')}</td></tr>`;
     }).join('');
     const html = `<h1>Busta stimata — ${MESI[mese - 1]} ${anno}</h1>
       <p class="aiuto">${esc(i.contratto.ccnl)} · livello ${esc(i.contratto.livello)} · generato il ${new Date().toLocaleDateString('it-IT')}. Stima non ufficiale.</p>
@@ -496,6 +504,7 @@
       { p: 'trasferte.piena', l: 'Indennità Piena (337) €', t: 'number' },
       { p: 'trasferte.sogliaFuori', l: 'Continuativa da N giorni fuori regione', t: 'number' },
       { p: 'trasferte.sogliaTotale', l: 'Continuativa da N giorni totali', t: 'number' },
+      { p: 'trasferte.sogliaPiattaforma', l: 'Con piattaforma: continuativa da N giorni', t: 'number' },
       { p: 'trasferte.maxColazione', l: 'Massimale colazione €', t: 'number' },
       { p: 'trasferte.maxPranzo', l: 'Massimale pranzo €', t: 'number' },
       { p: 'trasferte.maxCena', l: 'Massimale cena €', t: 'number' },
