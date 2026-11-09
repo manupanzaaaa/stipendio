@@ -1,0 +1,14 @@
+{
+  "name": "Calcolo Stipendio",
+  "short_name": "Stipendio",
+  "description": "Lordo e netto mensile con trasferte, straordinari e buoni pasto.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#1f5f8b",
+  "icons": [
+    { "src": "icona.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
